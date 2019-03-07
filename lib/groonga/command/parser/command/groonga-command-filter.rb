@@ -28,6 +28,9 @@ module Groonga
             @include_schema = true
             @include_load = true
             @output = output || $stdout
+            @create_dynamic_index = false
+            @index_columns = []
+            @delay_load_columns = []
           end
 
           def run(argv=ARGV)
@@ -77,6 +80,11 @@ module Groonga
               @include_load = boolean
             end
 
+            option_parser.on("--create-dynamic-index",
+                             "Change mode from static index construction to dynamic one") do |boolean|
+              @create_dynamic_index = boolean
+            end
+
             option_parser.parse!(argv)
           end
 
@@ -103,6 +111,14 @@ module Groonga
             input.each_line do |line|
               parser << line
             end
+            if @create_dynamic_index
+              @index_columns.each do |command|
+                @output.puts(command)
+              end
+              @delay_load_columns.each do |command|
+                @output.puts(command)
+              end
+            end
             parser.finish
           end
 
@@ -112,9 +128,13 @@ module Groonga
             case command
             when TableCreate
               return unless target_table?(command.name)
-              puts(command)
+              @output.puts(command)
             when ColumnCreate
               return unless target_column?(command.table, command.name)
+              if @create_dynamic_index and column_index?(command)
+                @index_columns << command.to_s
+                return
+              end
               @output.puts(command)
             else
               @output.puts(command)
@@ -124,8 +144,13 @@ module Groonga
           def filter_load_start(command)
             return unless @include_load
             return unless target_table?(command.table)
-            @output.puts(command)
-            @output.puts("[")
+            if @create_dynamic_index
+              @delay_load_columns << command.to_s
+              @delay_load_columns << "["
+            else
+              @output.puts(command)
+              @output.puts("[")
+            end
             @need_comma = false
           end
 
@@ -133,7 +158,11 @@ module Groonga
             return unless @include_load
             columns = extract_target_columns(command.table, columns)
             return if columns.empty?
-            @output.print(JSON.generate(columns))
+            if @create_dynamic_index
+              @delay_load_columns << JSON.generate(columns)
+            else
+              @output.print(JSON.generate(columns))
+            end
             @need_comma = true
           end
 
@@ -144,15 +173,24 @@ module Groonga
                                               command.columns,
                                               value)
             return if value.empty?
-            @output.puts(",") if @need_comma
-            @output.print(JSON.generate(value))
+            if @create_dynamic_index
+              @delay_load_columns[-1] << "," if @need_comma
+              @delay_load_columns << JSON.generate(value)
+            else
+              @output.puts(",") if @need_comma
+              @output.print(JSON.generate(value))
+            end
             @need_comma = true
           end
 
           def filter_load_complete(command)
             return unless @include_load
             return unless target_table?(command.table)
-            @output.puts("]")
+            if @create_dynamic_index
+              @delay_load_columns << "]"
+            else
+              @output.puts("]")
+            end
           end
 
           def target_table?(table)
@@ -165,6 +203,10 @@ module Groonga
             columns = @include_tables[table]
             return false if columns.nil?
             column == "_key" or columns.key?(column)
+          end
+
+          def column_index?(command)
+            command.flags.include?("COLUMN_INDEX")
           end
 
           def extract_target_columns(table, columns)
