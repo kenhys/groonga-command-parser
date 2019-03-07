@@ -23,10 +23,11 @@ module Groonga
     class Parser
       module Command
         class GroongaCommandFilter
-          def initialize
+          def initialize(output=nil)
             @include_tables = {}
             @include_schema = true
             @include_load = true
+            @output = output || $stdout
           end
 
           def run(argv=ARGV)
@@ -97,7 +98,7 @@ module Groonga
               filter_load_complete(command)
             end
             parser.on_comment do |comment|
-              puts("\##{comment}")
+              @output.puts("\##{comment}")
             end
             input.each_line do |line|
               parser << line
@@ -114,17 +115,17 @@ module Groonga
               puts(command)
             when ColumnCreate
               return unless target_column?(command.table, command.name)
-              puts(command)
+              @output.puts(command)
             else
-              puts(command)
+              @output.puts(command)
             end
           end
 
           def filter_load_start(command)
             return unless @include_load
             return unless target_table?(command.table)
-            puts(command)
-            puts("[")
+            @output.puts(command)
+            @output.puts("[")
             @need_comma = false
           end
 
@@ -132,7 +133,7 @@ module Groonga
             return unless @include_load
             columns = extract_target_columns(command.table, columns)
             return if columns.empty?
-            print(JSON.generate(columns))
+            @output.print(JSON.generate(columns))
             @need_comma = true
           end
 
@@ -143,15 +144,15 @@ module Groonga
                                               command.columns,
                                               value)
             return if value.empty?
-            puts(",") if @need_comma
-            print(JSON.generate(value))
+            @output.puts(",") if @need_comma
+            @output.print(JSON.generate(value))
             @need_comma = true
           end
 
           def filter_load_complete(command)
             return unless @include_load
             return unless target_table?(command.table)
-            puts("]")
+            @output.puts("]")
           end
 
           def target_table?(table)
