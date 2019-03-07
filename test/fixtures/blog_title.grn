@@ -1,0 +1,14 @@
+table_create Site TABLE_HASH_KEY ShortText
+column_create Site title COLUMN_SCALAR ShortText
+
+table_create Terms TABLE_PAT_KEY ShortText --default_tokenizer TokenBigram --normalizer NormalizerAuto
+
+load --table Site
+[
+["_key","title"],
+["http://example.org/","This is test record 1!"],
+["http://example.net/","test record 2."],
+["http://example.com/","test test record three."]
+]
+
+column_create Terms blog_title COLUMN_INDEX|WITH_POSITION Site title
